@@ -55,17 +55,13 @@ export default function CreateSecretForm() {
     try {
       const payload = await encrypt(plaintext, passphrase)
       
-      //DEBUG
-      console.log('[debug] passphrase usada:', passphrase)
-      console.log('[debug] payload:', payload)
-      //DEBUG
-      
       const id = await createSecret({
         ...payload,
         hint,
         burn_on_read: burnOnRead,
         expires_at: new Date(Date.now() + msMap[expiresIn]).toISOString(),
       })
+
       setShareLink(buildShareLink(id, passphrase))
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : ''

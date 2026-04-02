@@ -12,7 +12,7 @@ export function buildShareLink(secretId: string, passphrase: string): string {
 
   const base = typeof window !== 'undefined'
     ? window.location.origin
-    : process.env.NEXT_PUBLIC_APP_URL ?? ''
+    : process.env.SECRETSHARE_BASE_URL ?? ''
 
   return `${base}/s/${secretId}#${encoded}`
 }

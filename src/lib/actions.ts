@@ -2,7 +2,7 @@
 
 import { headers }        from 'next/headers'
 import { eq }             from 'drizzle-orm'
-import { db }             from '@/lib/db/client'
+import { getDb }          from '@/lib/db/client'
 import { secrets }        from '@/lib/db/schema'
 import { checkRateLimit } from '@/lib/ratelimit'
 import type { CreateSecretInput, ConsumedSecret } from '@/types/secret'
@@ -17,56 +17,63 @@ async function getIP(): Promise<string> {
 }
 
 export async function createSecret(input: CreateSecretInput): Promise<string> {
-  const ip = await getIP()
-  const { success, remaining, reset } = await checkRateLimit(ip)
+  try {
+    const ip = await getIP()
+    console.log('[create_secret] iniciando, IP:', ip)
 
-  if (!success) {
-    const retryAfter = Math.ceil((reset - Date.now()) / 1000)
-    throw new Error(`rate_limited:${retryAfter}`)
+    const { success, remaining, reset } = await checkRateLimit(ip)
+    console.log('[create_secret] rate limit:', { success, remaining })
+
+    if (!success) {
+      const retryAfter = Math.ceil((reset - Date.now()) / 1000)
+      throw new Error(`rate_limited:${retryAfter}`)
+    }
+
+    const db = getDb()
+    const [row] = await db
+      .insert(secrets)
+      .values({
+        ciphertext:  input.ciphertext,
+        iv:          input.iv,
+        salt:        input.salt,
+        hint:        input.hint ?? null,
+        burnOnRead:  input.burn_on_read,
+        expiresAt:   input.expires_at ? new Date(input.expires_at) : null,
+        maxViews:    input.max_views ?? null,
+      })
+      .returning({ id: secrets.id })
+
+    console.log('[create_secret] inserido com id:', row.id)
+    return row.id
+
+  } catch (err) {
+    console.error('[create_secret] ERRO COMPLETO:', err)
+    throw err
   }
-
-  console.info(`[create_secret] IP=${ip} remaining=${remaining}`)
-
-  const [row] = await db
-    .insert(secrets)
-    .values({
-      ciphertext:  input.ciphertext,
-      iv:          input.iv,
-      salt:        input.salt,
-      hint:        input.hint ?? null,
-      burnOnRead:  input.burn_on_read,
-      expiresAt:   input.expires_at ? new Date(input.expires_at) : null,
-      maxViews:    input.max_views ?? null,
-    })
-    .returning({ id: secrets.id })
-
-  return row.id
 }
 
 export async function readSecret(id: string): Promise<ConsumedSecret> {
-  // Transação para garantir atomicidade do burn_on_read
+  const db = getDb()
+
   return await db.transaction(async (tx) => {
     const [row] = await tx
       .select()
       .from(secrets)
       .where(eq(secrets.id, id))
-      .for('update')   // lock para evitar race condition
+      .for('update')
 
     if (!row) throw new Error('not_found_or_expired')
 
-    // Verifica expiração por tempo
     if (row.expiresAt && row.expiresAt < new Date()) {
       await tx.delete(secrets).where(eq(secrets.id, id))
       throw new Error('not_found_or_expired')
     }
 
-    // Verifica expiração por views
     if (row.maxViews !== null && row.viewCount >= row.maxViews) {
       await tx.delete(secrets).where(eq(secrets.id, id))
       throw new Error('not_found_or_expired')
     }
 
-    // Burn on read
     if (row.burnOnRead) {
       await tx.delete(secrets).where(eq(secrets.id, id))
       return {
@@ -79,13 +86,9 @@ export async function readSecret(id: string): Promise<ConsumedSecret> {
       } satisfies ConsumedSecret
     }
 
-    // Incrementa view count
     await tx
       .update(secrets)
-      .set({
-        viewCount:  row.viewCount + 1,
-        accessedAt: new Date(),
-      })
+      .set({ viewCount: row.viewCount + 1, accessedAt: new Date() })
       .where(eq(secrets.id, id))
 
     const remaining = row.maxViews !== null

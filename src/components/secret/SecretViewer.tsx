@@ -52,12 +52,6 @@ export default function SecretViewer({
     setPhase('decrypting')
 
     try {
-
-      //DEBUG
-      console.log('[debug] passphrase digitada:', passphrase)
-      console.log('[debug] secret recebido:', secret)
-      //DEBUG
-
       const result = await decrypt(
         { ciphertext: secret.ciphertext, iv: secret.iv, salt: secret.salt },
         passphrase

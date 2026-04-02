@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
-export function proxy(request: NextRequest) {  // ← era "middleware", agora é "proxy"
+export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
   const isDev = process.env.NODE_ENV === 'development'
 
@@ -9,11 +9,9 @@ export function proxy(request: NextRequest) {  // ← era "middleware", agora é
     default-src 'self';
     script-src  'self' 'nonce-${nonce}' ${isDev ? "'unsafe-eval'" : ''};
     style-src   'self' 'unsafe-inline';
-    connect-src 'self'
-      ${process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''}
-      https://*.upstash.io;
+    connect-src 'self' data:;
     img-src     'self' data:;
-    font-src    'self';
+    font-src    'self' data:;
     frame-ancestors 'none';
     base-uri    'self';
     form-action 'self';

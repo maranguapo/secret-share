@@ -18,8 +18,98 @@ Destinatário abre o link → digita a passphrase → browser descriptografa loc
 - **Burn on read** — segredo apagado do banco após a primeira leitura
 - **TTL configurável** — expira em 1h, 24h ou 7 dias
 - **Rate limiting** — máximo 5 criações por IP a cada 10 minutos
+- **HTTPS nativo** — certificado autoassinado gerado automaticamente no container
 
-## Stack
+---
+
+## Usar via Docker Hub (sem clonar o repositório)
+
+A forma mais rápida de rodar o SecretShare é direto da imagem publicada.
+
+### Pré-requisitos
+
+- Docker e Docker Compose instalados
+- PostgreSQL acessível
+- Redis acessível
+
+### `docker-compose.yml`
+```yaml
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       secretshare
+      POSTGRES_USER:     secretshare
+      POSTGRES_PASSWORD: sua_senha_aqui
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secretshare"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  secretshare:
+    image: maranguapo/secret-share:latest
+    restart: unless-stopped
+    ports:
+      - "8443:3000"
+    environment:
+      SECRETSHARE_DB_URL:      postgres://secretshare:sua_senha_aqui@postgres:5432/secretshare
+      SECRET_SHARE_REDIS_URL:  redis://redis:6379
+      SECRETSHARE_BASE_URL:    https://seu-ip-ou-dominio:8443
+    volumes:
+      - secretshare_certs:/app/certs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  secretshare_certs:
+```
+
+### Subir
+```bash
+docker compose up -d
+```
+
+As migrations são executadas automaticamente na primeira inicialização. Acesse `https://seu-ip:8443` — na primeira vez o browser vai alertar sobre o certificado autoassinado, clique em **Avançado → Prosseguir**.
+
+### Variáveis de ambiente
+
+| Variável | Descrição | Exemplo |
+|----------|-----------|---------|
+| `SECRETSHARE_DB_URL` | URL de conexão com o PostgreSQL | `postgres://user:pass@host:5432/secretshare` |
+| `SECRET_SHARE_REDIS_URL` | URL de conexão com o Redis | `redis://host:6379` |
+| `SECRETSHARE_BASE_URL` | URL pública da aplicação | `https://192.168.1.12:8443` |
+
+### Atualizar para nova versão
+```bash
+docker compose pull
+docker compose up -d
+```
+
+---
+
+## Desenvolver / Contribuir
+
+### Stack
 
 | Camada | Tecnologia |
 |--------|-----------|
@@ -29,70 +119,35 @@ Destinatário abre o link → digita a passphrase → browser descriptografa loc
 | Cache / Rate limit | Redis + ioredis |
 | Infraestrutura | Docker Compose |
 
-## Pré-requisitos
+### Pré-requisitos
 
-- [Docker](https://docs.docker.com/engine/install/) e Docker Compose
-- [Node.js 22+](https://nodejs.org/)
+- Docker e Docker Compose
+- Node.js 22+
 
-## Rodar localmente
-
-### 1. Clone o repositório
+### Setup local
 ```bash
-git clone https://github.com/seu-usuario/secret-share.git
+# 1. Clone o repositório
+git clone https://github.com/maranguapo/secret-share.git
 cd secret-share
-```
 
-### 2. Configure as variáveis de ambiente
-```bash
+# 2. Configure as variáveis de ambiente
 cp .env.example .env.local
-```
+# edite .env.local com suas configurações
 
-Edite o `.env.local` com suas configurações.
-
-### 3. Sobe o Postgres e o Redis
-```bash
+# 3. Sobe o Postgres e o Redis
 docker compose up postgres redis -d
-```
 
-### 4. Instala dependências e roda as migrations
-```bash
+# 4. Instala dependências e roda as migrations
 npm install
 npm run db:migrate
-```
 
-### 5. Inicia o servidor de desenvolvimento
-```bash
+# 5. Inicia o servidor de desenvolvimento
 npm run dev
 ```
 
 Acesse [http://localhost:3000](http://localhost:3000).
 
-## Deploy com Docker
-
-### Build da imagem
-```bash
-docker build -t seu-usuario/secret-share:latest .
-```
-
-### Rodar em produção
-```bash
-docker compose up -d
-```
-
-### Publicar no Docker Hub
-```bash
-docker push seu-usuario/secret-share:latest
-```
-
-## Variáveis de ambiente
-
-| Variável | Descrição | Exemplo |
-|----------|-----------|---------|
-| `DATABASE_URL` | URL de conexão com o Postgres | `postgres://user:pass@localhost:5432/secretshare` |
-| `REDIS_URL` | URL de conexão com o Redis | `redis://localhost:6379` |
-| `NEXT_PUBLIC_APP_URL` | URL pública da aplicação | `https://seudominio.com` |
-
-## Scripts disponíveis
+### Scripts disponíveis
 ```bash
 npm run dev          # servidor de desenvolvimento
 npm run build        # build de produção
@@ -101,7 +156,17 @@ npm run db:migrate   # roda as migrations
 npm run db:studio    # abre o Drizzle Studio (UI do banco)
 ```
 
-## Estrutura do projeto
+### Publicar nova versão
+```bash
+./release.sh 1.0.0
+```
+
+Para sobrescrever uma versão existente sem criar novo commit:
+```bash
+./release.sh 1.0.0 --overwrite
+```
+
+### Estrutura do projeto
 ```
 src/
 ├── app/
@@ -119,7 +184,7 @@ src/
 │   │   ├── passphrase.ts     # gerador de passphrase forte
 │   │   └── shareLink.ts      # build / extract do link
 │   └── db/
-│       ├── client.ts         # conexão com o Postgres
+│       ├── client.ts         # conexão com o PostgreSQL
 │       └── schema.ts         # schema Drizzle
 └── types/
     └── secret.ts             # tipos compartilhados
