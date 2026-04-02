@@ -1,17 +1,26 @@
 const { createServer } = require('https')
-const { createServer: createHttpServer } = require('http')
-const { parse } = require('url')
-const next = require('next')
-const { execSync } = require('child_process')
-const fs = require('fs')
-const path = require('path')
+const { parse }        = require('url')
+const next             = require('next')
+const { execSync }     = require('child_process')
+const fs               = require('fs')
+const path             = require('path')
+const os               = require('os')
 
-const dev  = process.env.NODE_ENV !== 'production'
-const port = parseInt(process.env.PORT || '3000', 10)
-const app  = next({ dev })
+const dev    = process.env.NODE_ENV !== 'production'
+const port   = parseInt(process.env.PORT || '3000', 10)
+const app    = next({ dev })
 const handle = app.getRequestHandler()
 
-// Gera certificado autoassinado se não existir
+function getLocalIP() {
+  const nets = os.networkInterfaces()
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) return net.address
+    }
+  }
+  return '0.0.0.0'
+}
+
 function getCerts() {
   const certDir  = '/app/certs'
   const certFile = path.join(certDir, 'cert.pem')
@@ -21,15 +30,16 @@ function getCerts() {
 
   if (!fs.existsSync(certFile) || !fs.existsSync(keyFile)) {
     console.log('→ Gerando certificado autoassinado...')
+    const ip = getLocalIP()
     execSync(`
       openssl req -x509 -newkey rsa:2048 -nodes \
         -keyout ${keyFile} \
         -out ${certFile} \
         -days 3650 \
         -subj "/CN=secretshare" \
-        -addext "subjectAltName=IP:192.168.1.12,IP:127.0.0.1,DNS:localhost"
+        -addext "subjectAltName=IP:${ip},IP:127.0.0.1,DNS:localhost"
     `)
-    console.log('✓ Certificado gerado')
+    console.log('✓ Certificado gerado para IP:', ip)
   }
 
   return {
@@ -40,11 +50,12 @@ function getCerts() {
 
 app.prepare().then(() => {
   const certs = getCerts()
+  const ip    = getLocalIP()
 
   createServer(certs, (req, res) => {
     const parsedUrl = parse(req.url, true)
     handle(req, res, parsedUrl)
   }).listen(port, '0.0.0.0', () => {
-    console.log(`▲ Next.js rodando em https://0.0.0.0:${port}`)
+    console.log(`▲ SecretShare rodando em https://${ip}:${port}`)
   })
 })

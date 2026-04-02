@@ -3,7 +3,10 @@ const { migrate }  = require('drizzle-orm/postgres-js/migrator')
 const postgres     = require('postgres')
 
 async function main() {
-  const sql = postgres(process.env.DATABASE_URL, { max: 1 })
+  const url = process.env.DATABASE_URL || process.env.SECRETSHARE_DB_URL
+  if (!url) throw new Error('SECRETSHARE_DB_URL não definida')
+
+  const sql = postgres(url, { max: 1 })
   const db  = drizzle(sql)
 
   await migrate(db, { migrationsFolder: './drizzle' })
