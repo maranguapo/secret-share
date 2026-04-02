@@ -1,15 +1,15 @@
 {
   "name": "write-whispers",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint":  "next lint",
+    "lint": "next lint",
     "db:generate": "dotenv -e .env.local -- drizzle-kit generate",
-    "db:migrate":  "dotenv -e .env.local -- drizzle-kit migrate",
-    "db:studio":   "dotenv -e .env.local -- drizzle-kit studio"
+    "db:migrate": "dotenv -e .env.local -- drizzle-kit migrate",
+    "db:studio": "dotenv -e .env.local -- drizzle-kit studio"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
